@@ -1,0 +1,396 @@
+<!doctype html>
+
+<html>
+<head>
+<script src=hidpi-canvas.min.js></script>
+<style>
+*{
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+}
+body {
+	background-color: #222;
+}
+canvas {
+	width: 100%;
+	height: 100%;
+}
+#logView {
+	position: fixed;
+	bottom: 10px;
+	left: 10px;
+	color: #eee;
+	font-family: sans-serif;
+	font-size: 0.75em;
+}
+</style>
+</head>
+<body>
+<canvas></canvas>
+<div id=logView>TEST</div>
+</body>
+<script>
+let canvas = document.querySelector('canvas');
+let ctx = canvas.getContext('2d');
+let width = canvas.width / getPixelRatio();
+let height = canvas.height / getPixelRatio();
+let pathTypes = ['sin', 'line', 'circle'];
+
+let bounds = {
+	w: 1000,
+	h: 1000
+};
+
+let m = {
+	x: 0,
+	y: 0
+};
+
+let k = {
+	x: 0,
+	y: 0,
+	wasd: 0x0 // 1101 == WAsD 0000 == wasd 0010 == waSd
+};
+
+let d = [];
+
+let p = {
+	x: 0, y: 0, 
+	r: 3,
+	s: 10
+};
+
+let logStack = [];
+function log(m) {
+	let logView = document.querySelector('#logView');
+	let msg = '';
+	let max = 50;
+	logStack.push(m);
+	if (logStack.length > 5) {
+		logStack.shift();
+	}
+	logView.innerHTML = '';
+	for (let i of logStack) {
+		if (i instanceof Array) {
+			for (let t of i) {
+				logView.innerHTML += t;
+				logView.innerHTML += ', ';
+			}
+		} else {
+			logView.innerHTML += i;
+		}
+		logView.innerHTML += '<br>';
+	}
+}
+
+function getPixelRatio() {
+    var backingStore = ctx.backingStorePixelRatio ||
+          ctx.webkitBackingStorePixelRatio ||
+          ctx.mozBackingStorePixelRatio ||
+          ctx.msBackingStorePixelRatio ||
+          ctx.oBackingStorePixelRatio ||
+          ctx.backingStorePixelRatio || 1;
+
+    return (window.devicePixelRatio || 1) / backingStore;
+};
+
+canvas.onclick = function() {
+	canvas.requestPointerLock = canvas.requestPointerLock ||
+															canvas.mozRequestPointerLock;
+	canvas.requestPointerLock();
+};
+
+window.onresize = function() {
+	let scale = getPixelRatio();
+	canvas.width = window.innerWidth * scale;
+	canvas.height = window.innerHeight * scale;
+	canvas.style.width = window.innerWidth + 'px';
+	canvas.style.height = window.innerHeight + 'px';
+	width = canvas.width / scale;
+	height = canvas.height / scale;
+
+	window.requestAnimationFrame(draw);
+};
+window.onresize();
+
+function start() {
+	canvas.requestPointerLock = canvas.requestPointerLock ||
+															canvas.mozRequestPointerLock;
+	canvas.requestPointerLock();
+
+	d.push(makeDot());
+	d.push(makeDot());
+}
+start();
+
+function draw() {
+	let scale = getPixelRatio();
+	ctx.clearRect(0, 0, width, height);
+
+	drawGrid();
+
+	//bounds
+	//ctx.beginPath();
+	//ctx.rect(width/2 - m.x - bounds.w/2, height/2 - m.y - bounds.h/2, bounds.w, bounds.h);
+	////circle(m.x, m.y, 200);
+	//ctx.strokeStyle = '#eeeeee';
+	//ctx.stroke();
+
+	let b = boundsInView();
+	for (let i of b) {
+		i.x *= bounds.w;
+		i.y *= bounds.h;
+		drawDots(i);
+		drawPlayer(i);
+	}
+
+
+	//drawDots({x:0,y:0})
+	//drawDots({x:4,y:3})
+
+	cursor();
+}
+
+function drawPlayer(o) {
+	ctx.beginPath();
+	ctx.fillStyle = '#0000ff';
+	circle(p.x-m.x+o.x, p.y-m.y+o.y, p.r);
+	ctx.fill();
+}
+
+function drawGrid() {
+	let gap = 15;
+
+	ctx.beginPath();
+	ctx.strokeStyle = '#111';
+	let ox = m.x % 15;
+	let oy = m.y % 15;
+	for (let x = 0; x < width; x += gap) {
+		ctx.moveTo(x-ox,0);
+		ctx.lineTo(x-ox,height);
+	}
+	for (let y = 0; y < height; y += gap) {
+		ctx.moveTo(0,y-oy);
+		ctx.lineTo(width,y-oy);
+	}
+	ctx.stroke();
+}
+
+function boundsInView() {
+	let ret = [];
+	let north = Math.ceil((height/2 - bounds.h/2 - m.y) / bounds.h);
+	let south = Math.ceil((height/2 - bounds.h/2 + m.y) / bounds.h);
+	let east = Math.ceil((width/2 - bounds.w/2 - m.x) / bounds.w);
+	let west = Math.ceil((width/2 - bounds.w/2 + m.x) / bounds.w);
+
+	for (let x = -east; x <= west; x++) {
+		for (let y = -south; y <= north; y++) {
+			ret.push({x:x,y:-y});
+
+		}
+	}
+	return ret;
+}
+
+function drawDots(o) {
+	//log('drawing '+o.x+' : '+o.y);
+
+	ctx.fillStyle = '#ff0000';
+	for (let i of d) {
+		ctx.beginPath();
+		circle(i.x-m.x+o.x,i.y-m.y+o.y,i.r);
+		ctx.fill();
+	}
+	//highlights newest dot
+	//ctx.stroke();
+}
+
+function cursor() {
+	let length = 5;
+	let gap = 3;
+	ctx.lineWidth = 2;
+	ctx.strokeStyle = '#00ff00';
+
+	// left
+	ctx.beginPath();
+	ctx.moveTo(width/2-gap-length,height/2);
+	ctx.lineTo(width/2-gap,height/2);
+	ctx.stroke();
+
+	//right
+	ctx.beginPath();
+	ctx.moveTo(width/2+gap+length,height/2);
+	ctx.lineTo(width/2+gap,height/2);
+	ctx.stroke();
+
+	//top
+	ctx.beginPath();
+	ctx.moveTo(width/2,height/2+gap+length);
+	ctx.lineTo(width/2,height/2+gap);
+	ctx.stroke();
+
+	//bottom
+	ctx.beginPath();
+	ctx.moveTo(width/2,height/2-gap-length);
+	ctx.lineTo(width/2,height/2-gap);
+	ctx.stroke();
+
+	//ctx.moveTo(m.x-5,m.y);
+	//ctx.lineTo(m.x+5,m.y);
+	//ctx.moveTo(m.x,m.y-5);
+	//ctx.lineTo(m.x,m.y+5);
+}
+
+function circle(x, y, r) {
+	ctx.arc(x + width/2,y + height/2, r,0,2*Math.PI);
+}
+
+let ct = 0;
+let time = 0;
+window.requestAnimationFrame(update);
+function update(t) {
+	let dt = t - time;
+	time = t;
+	dt /= 100;
+	for (let i in d) {
+		d[i].path.a += d[i].path.s * d[i].path.i * dt;
+		d[i].x = Math.cos(d[i].path.a) * d[i].path.r + d[i].path.ox;
+		d[i].y = Math.sin(d[i].path.a) * d[i].path.r + d[i].path.oy;
+	}
+	if (ct == 200) {
+		ct = 0;
+		d.push(makeDot());
+	}
+	
+	if (k.wasd & 0x8) {
+		p.y -= dt * p.s;
+		m.y -= dt * p.s;
+	}
+	if (k.wasd & 0x4) {
+		p.x -= dt * p.s;
+		m.x -= dt * p.s;
+	}
+	if (k.wasd & 0x2) {
+		p.y += dt * p.s;
+		m.y += dt * p.s;
+	}
+	if (k.wasd & 0x1) {
+		p.x += dt * p.s;
+		m.x += dt * p.s;
+	}
+	boundsCheck(p);
+	draw();
+	window.requestAnimationFrame(update);
+	ct++;
+}
+
+function makeDot() {
+	let ret = {};
+	ret.path = {};
+	ret.path.type = pathTypes[Math.floor(Math.random()*pathTypes.length)];
+	ret.x = Math.random()*bounds.w-bounds.w/2;
+	ret.y = Math.random()*bounds.h-bounds.h/2;
+	ret.r = Math.random()*2+2;
+	switch(ret.path.type) {
+		case 'sin':
+		case 'circle':
+		case 'line':
+		default:
+			ret.path.i = Math.random() < 0.5 ? -1 : 1;
+			ret.path.s = Math.random()*0.1+0.05;
+			ret.path.r = Math.random()*15+15;
+			ret.path.a = 0;
+			ret.path.ox = ret.x - ret.path.r;
+			ret.path.oy = ret.y;
+	}
+	return ret;
+}
+
+//let interval = setInterval(update, 20);
+function dist(o1, o2) {
+	return Math.sqrt(Math.pow(o1.x-o2.x, 2) + Math.pow(o1.y-o2.y, 2));
+}
+
+document.addEventListener("keyup", keyup, false);
+document.addEventListener("keydown", keydown, false);
+document.addEventListener("mousemove", mousemove, false);
+document.addEventListener("mousedown", mousedown, false);
+function keyup(e) {
+	switch (e.key) {
+		case 'w':
+			k.wasd ^= 8;
+			break;
+		case 'a':
+			k.wasd ^= 4;
+			break;
+		case 's':
+			k.wasd ^= 2;
+			break;
+		case 'd':
+			k.wasd ^= 1;
+			break;
+	}
+
+	k.x = 0;
+	k.y = 0;
+	if (k.wasd ^ 0x8) k.y++;
+	if (k.wasd ^ 0x4) k.x--;
+	if (k.wasd ^ 0x2) k.y--;
+	if (k.wasd ^ 0x1) k.x++;
+}
+function keydown(e) {
+	switch (e.key) {
+		case 'w':
+			k.wasd |= 8;
+			break;
+		case 'a':
+			k.wasd |= 4;
+			break;
+		case 's':
+			k.wasd |= 2;
+			break;
+		case 'd':
+			k.wasd |= 1;
+			break;
+	}
+
+	k.x = 0;
+	k.y = 0;
+	if (k.wasd ^ 0x8) k.y++;
+	if (k.wasd ^ 0x4) k.x--;
+	if (k.wasd ^ 0x2) k.y--;
+	if (k.wasd ^ 0x1) k.x++;
+}
+function mousemove(e) {
+	m.x += e.movementX / getPixelRatio();
+	m.y += e.movementY / getPixelRatio();
+	boundsCheck(m);
+}
+
+function boundsCheck(o) {
+	if (o.x > bounds.w/2) {
+		o.x -= bounds.w;
+	}
+	if (o.x < -bounds.w/2) {
+		o.x += bounds.w;
+	}
+	if (o.y > bounds.h/2) {
+		o.y -= bounds.h;
+	}
+	if (o.y < -bounds.h/2) {
+		o.y += bounds.h;
+	}
+	//window.requestAnimationFrame(draw);
+}
+
+function mousedown(e) {
+	d = d.filter((i)=>{
+		return dist(i,m) > i.r;
+	});
+	//window.requestAnimationFrame(draw);
+}
+
+
+</script>
+</html>
