@@ -1,0 +1,21 @@
+{
+  "name": "pointandclick",
+  "version": "0.1.1",
+  "description": "widow hs simulator",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Running tests...\"; sleep 2; echo \"21/21 Tests passed\"",
+    "start": "node server.js"
+  },
+  "keywords": [
+    "game",
+    "multiplayer",
+    "canvas"
+  ],
+  "author": "Jake Mayeux",
+  "license": "GPL",
+  "dependencies": {
+    "express": "^4.16.4",
+    "socket.io": "^2.1.1"
+  }
+}

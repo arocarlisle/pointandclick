@@ -3,6 +3,7 @@
 <html>
 <head>
 <script src=hidpi-canvas.min.js></script>
+<script src="/socket.io/socket.io.js"></script>
 <style>
 *{
 	margin: 0;
@@ -31,6 +32,7 @@ canvas {
 <div id=logView>TEST</div>
 </body>
 <script>
+let socket = io();
 let canvas = document.querySelector('canvas');
 let ctx = canvas.getContext('2d');
 let width = canvas.width / getPixelRatio();
@@ -53,11 +55,14 @@ let k = {
 	wasd: 0x0 // 1101 == WAsD 0000 == wasd 0010 == waSd
 };
 
-let d = [];
+let ids = [];
+let dots = [];
+let lastDots = [];
+let tick = -1;
 
 let p = {
 	x: 0, y: 0, 
-	r: 3,
+	r: 4,
 	s: 10
 };
 
@@ -65,9 +70,9 @@ let logStack = [];
 function log(m) {
 	let logView = document.querySelector('#logView');
 	let msg = '';
-	let max = 50;
+	let max = 20;
 	logStack.push(m);
-	if (logStack.length > 5) {
+	if (logStack.length > max) {
 		logStack.shift();
 	}
 	logView.innerHTML = '';
@@ -119,8 +124,8 @@ function start() {
 															canvas.mozRequestPointerLock;
 	canvas.requestPointerLock();
 
-	d.push(makeDot());
-	d.push(makeDot());
+	//d.push(makeDot());
+	//d.push(makeDot());
 }
 start();
 
@@ -142,7 +147,7 @@ function draw() {
 		i.x *= bounds.w;
 		i.y *= bounds.h;
 		drawDots(i);
-		drawPlayer(i);
+		//drawPlayer(i);
 	}
 
 
@@ -151,6 +156,24 @@ function draw() {
 
 	cursor();
 }
+
+function drawDots(o) {
+	//log('drawing '+o.x+' : '+o.y);
+
+	//log('drawin dotz');
+	//console.log(o)
+
+	ctx.fillStyle = '#ff0000';
+	for (let i of d) {
+		//console.log('asdf', i);
+		ctx.beginPath();
+		circle(i.x-m.x+o.x, i.y-m.y+o.y, i.r);
+		ctx.fill();
+	}
+	//highlights newest dot
+	//ctx.stroke();
+}
+
 
 function drawPlayer(o) {
 	ctx.beginPath();
@@ -191,19 +214,6 @@ function boundsInView() {
 		}
 	}
 	return ret;
-}
-
-function drawDots(o) {
-	//log('drawing '+o.x+' : '+o.y);
-
-	ctx.fillStyle = '#ff0000';
-	for (let i of d) {
-		ctx.beginPath();
-		circle(i.x-m.x+o.x,i.y-m.y+o.y,i.r);
-		ctx.fill();
-	}
-	//highlights newest dot
-	//ctx.stroke();
 }
 
 function cursor() {
@@ -248,41 +258,47 @@ function circle(x, y, r) {
 
 let ct = 0;
 let time = 0;
+let sendRate = 100;
 window.requestAnimationFrame(update);
 function update(t) {
 	let dt = t - time;
 	time = t;
-	dt /= 100;
-	for (let i in d) {
-		d[i].path.a += d[i].path.s * d[i].path.i * dt;
-		d[i].x = Math.cos(d[i].path.a) * d[i].path.r + d[i].path.ox;
-		d[i].y = Math.sin(d[i].path.a) * d[i].path.r + d[i].path.oy;
-	}
-	if (ct == 200) {
+	//dt /= 100;
+	//for (let i of d) {
+	//	i.path.a += i.path.s * i.path.i * dt;
+	//	i.x = Math.cos(i.path.a) * i.path.r + i.path.ox;
+	//	i.y = Math.sin(i.path.a) * i.path.r + i.path.oy;
+	//}
+	//for (let i in d) {
+	//	d[i].path.a += d[i].path.s * d[i].path.i * dt;
+	//	d[i].x = Math.cos(d[i].path.a) * d[i].path.r + d[i].path.ox;
+	//	d[i].y = Math.sin(d[i].path.a) * d[i].path.r + d[i].path.oy;
+	//}
+	if (ct >= sendRate) {
+		//send();
 		ct = 0;
-		d.push(makeDot());
 	}
 	
-	if (k.wasd & 0x8) {
-		p.y -= dt * p.s;
-		m.y -= dt * p.s;
-	}
-	if (k.wasd & 0x4) {
-		p.x -= dt * p.s;
-		m.x -= dt * p.s;
-	}
-	if (k.wasd & 0x2) {
-		p.y += dt * p.s;
-		m.y += dt * p.s;
-	}
-	if (k.wasd & 0x1) {
-		p.x += dt * p.s;
-		m.x += dt * p.s;
-	}
-	boundsCheck(p);
+//	if (k.wasd & 0x8) {
+//		p.y -= dt * p.s;
+//		m.y -= dt * p.s;
+//	}
+//	if (k.wasd & 0x4) {
+//		p.x -= dt * p.s;
+//		m.x -= dt * p.s;
+//	}
+//	if (k.wasd & 0x2) {
+//		p.y += dt * p.s;
+//		m.y += dt * p.s;
+//	}
+//	if (k.wasd & 0x1) {
+//		p.x += dt * p.s;
+//		m.x += dt * p.s;
+//	}
+	//boundsCheck(p);
 	draw();
 	window.requestAnimationFrame(update);
-	ct++;
+	ct += dt;
 }
 
 function makeDot() {
@@ -338,6 +354,7 @@ function keyup(e) {
 	if (k.wasd ^ 0x4) k.x--;
 	if (k.wasd ^ 0x2) k.y--;
 	if (k.wasd ^ 0x1) k.x++;
+	socket.emit('wasd', k.wasd);
 }
 function keydown(e) {
 	switch (e.key) {
@@ -361,6 +378,7 @@ function keydown(e) {
 	if (k.wasd ^ 0x4) k.x--;
 	if (k.wasd ^ 0x2) k.y--;
 	if (k.wasd ^ 0x1) k.x++;
+	socket.emit('wasd', k.wasd);
 }
 function mousemove(e) {
 	m.x += e.movementX / getPixelRatio();
@@ -385,11 +403,37 @@ function boundsCheck(o) {
 }
 
 function mousedown(e) {
-	d = d.filter((i)=>{
-		return dist(i,m) > i.r;
-	});
-	//window.requestAnimationFrame(draw);
+	//d = d.filter((i)=>{
+	//	//return dist(i,m) > i.r;
+	//});
+	////window.requestAnimationFrame(draw);
+	socket.emit('click', m.x, m.y);
 }
+
+function send() {
+	console.log('SEND');
+	socket.emit('update', p.x, p.y, k.wasd);
+}
+
+socket.on('update', (p, t)=>{
+	if (tick == -1) {
+		tick = t;
+	} else if (tick+1 != t) {
+		log('MISSED A TICK');
+	}
+	players = p;
+});
+socket.on('die', ()=>{
+	log('you died')
+	//p.x=Math.random()*bounds.w;
+	//p.y=Math.random()*bounds.h;
+	boundsCheck(p);
+	send();
+})
+socket.on('reset', (newD, newIds)=>{
+	ids = Array.from(newIds);
+	d = Array.from(newD);
+});
 
 
 </script>
