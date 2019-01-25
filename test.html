@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+
+<script src="https://d3js.org/d3.v4.min.js"></script>
+
+<body></body>
+
+<script type="text/javascript">
+const width = 20;
+const height = 20;
+const scale = 10; // the higher the number the crisper the custom image
+
+var canvas = d3.select("body").append("canvas");
+context = canvas.node().getContext("2d");
+
+const ratio = window.devicePixelRatio || 1;
+canvas.attr('width', width * ratio * scale)
+		.attr('height', height * ratio * scale)
+		.style('width', width * scale + 'px')
+		.style('height', height * scale + 'px');
+
+var imageData = context.createImageData(width, height);
+
+for (var i = 0, l = 0; i<height; ++i) {
+		for (j = 0; j<width; ++j, l += 4) {
+				imageData.data[l+0] = Math.round( Math.random() * 255);
+				imageData.data[l+1] = Math.round( Math.random() * 255);
+				imageData.data[l+2] = Math.round( Math.random() * 255);
+				imageData.data[l+3] = Math.round( Math.random() * 255);
+		}
+}
+
+const offCtx = canvas.node().cloneNode().getContext('2d'); // create an off screen canvas
+offCtx.putImageData(imageData, 0,0);
+context.scale(ratio * scale, ratio * scale);
+context.mozImageSmoothingEnabled = false;
+context.imageSmoothingEnabled = false;
+context.drawImage(offCtx.canvas, 0,0);
+
+//export image
+var ImageD = canvas.node().toDataURL("img/png");
+//load image
+d3.select('body').append('svg').attr("height", 500).attr("width", 500).append("svg:image").datum(ImageD).attr("xlink:href", function(d) {return d})
+						.attr("height", 500).attr("width", 500);
+</script>

@@ -3,7 +3,8 @@
 <html>
 <head>
 <script src=hidpi-canvas.min.js></script>
-<script src="/socket.io/socket.io.js"></script>
+<script src='/socket.io/socket.io.js'></script>
+<script src='/sounds.js'></script>
 <style>
 *{
 	margin: 0;
@@ -25,11 +26,14 @@ canvas {
 	font-family: sans-serif;
 	font-size: 0.75em;
 }
+audio{
+	display: none;
+}
 </style>
 </head>
 <body>
 <canvas></canvas>
-<div id=logView>TEST</div>
+<div id=logView>.......</div>
 </body>
 <script>
 let socket = io();
@@ -38,6 +42,9 @@ let ctx = canvas.getContext('2d');
 let width = canvas.width / getPixelRatio();
 let height = canvas.height / getPixelRatio();
 let pathTypes = ['sin', 'line', 'circle'];
+let hsSound = new Audio('hs.mp3');
+
+const PLAYER_SIZE= 4;
 
 let bounds = {
 	w: 1000,
@@ -59,6 +66,7 @@ let ids = [];
 let dots = [];
 let lastDots = [];
 let tick = -1;
+let players = {};
 
 let p = {
 	x: 0, y: 0, 
@@ -66,8 +74,11 @@ let p = {
 	s: 10
 };
 
+let anims = [];
+
 let logStack = [];
 function log(m) {
+	return;
 	let logView = document.querySelector('#logView');
 	let msg = '';
 	let max = 20;
@@ -120,6 +131,10 @@ window.onresize = function() {
 window.onresize();
 
 function start() {
+//canvas.attr('width', width * ratio * scale)
+//		.attr('height', height * ratio * scale)
+//		.style('width', width * scale + 'px')
+//		.style('height', height * scale + 'px');
 	canvas.requestPointerLock = canvas.requestPointerLock ||
 															canvas.mozRequestPointerLock;
 	canvas.requestPointerLock();
@@ -158,20 +173,23 @@ function draw() {
 }
 
 function drawDots(o) {
-	//log('drawing '+o.x+' : '+o.y);
-
-	//log('drawin dotz');
-	//console.log(o)
-
-	ctx.fillStyle = '#ff0000';
-	for (let i of d) {
-		//console.log('asdf', i);
+	for (let id of Object.keys(players)) {
+		if (id == socket.id) {
+			ctx.fillStyle = '#0000ff';
+		} else {
+			ctx.fillStyle = '#ff0000';
+		}
 		ctx.beginPath();
-		circle(i.x-m.x+o.x, i.y-m.y+o.y, i.r);
+		let i = players[id];
+		let x = i.x-m.x+o.x+width/2;
+		let y = i.y-m.y+o.y+height/2;
+		ctx.arc(x, y, players[id].r, 0, 2*Math.PI);
 		ctx.fill();
+
+		ctx.fillStyle = '#333';
+		ctx.font = '16px sans-serif';
+		ctx.fillText(players[id].k, x, y+22);
 	}
-	//highlights newest dot
-	//ctx.stroke();
 }
 
 
@@ -183,12 +201,12 @@ function drawPlayer(o) {
 }
 
 function drawGrid() {
-	let gap = 15;
+	let gap = 50;
 
 	ctx.beginPath();
 	ctx.strokeStyle = '#111';
-	let ox = m.x % 15;
-	let oy = m.y % 15;
+	let ox = m.x % gap;
+	let oy = m.y % gap;
 	for (let x = 0; x < width; x += gap) {
 		ctx.moveTo(x-ox,0);
 		ctx.lineTo(x-ox,height);
@@ -226,25 +244,43 @@ function cursor() {
 	ctx.beginPath();
 	ctx.moveTo(width/2-gap-length,height/2);
 	ctx.lineTo(width/2-gap,height/2);
-	ctx.stroke();
 
 	//right
-	ctx.beginPath();
 	ctx.moveTo(width/2+gap+length,height/2);
 	ctx.lineTo(width/2+gap,height/2);
-	ctx.stroke();
 
 	//top
-	ctx.beginPath();
 	ctx.moveTo(width/2,height/2+gap+length);
 	ctx.lineTo(width/2,height/2+gap);
-	ctx.stroke();
 
 	//bottom
-	ctx.beginPath();
 	ctx.moveTo(width/2,height/2-gap-length);
 	ctx.lineTo(width/2,height/2-gap);
 	ctx.stroke();
+
+	for (let a of anims) {
+		if (a.type == 'hitmarker') {
+			ctx.globalAlpha = a.a/a.oa;
+			ctx.strokeStyle = '#ff0000';
+
+			//left
+			ctx.beginPath();
+			ctx.moveTo(width/2-gap,height/2-gap);
+			ctx.lineTo(width/2-gap-length,height/2-gap-length);
+
+			ctx.moveTo(width/2+gap,height/2+gap);
+			ctx.lineTo(width/2+gap+length,height/2+gap+length);
+
+			ctx.moveTo(width/2+gap,height/2-gap);
+			ctx.lineTo(width/2+gap+length,height/2-gap-length);
+
+			ctx.moveTo(width/2-gap,height/2+gap);
+			ctx.lineTo(width/2-gap-length,height/2+gap+length);
+
+			ctx.stroke();
+			ctx.globalAlpha = 1;
+		}
+	}
 
 	//ctx.moveTo(m.x-5,m.y);
 	//ctx.lineTo(m.x+5,m.y);
@@ -252,9 +288,9 @@ function cursor() {
 	//ctx.lineTo(m.x,m.y+5);
 }
 
-function circle(x, y, r) {
-	ctx.arc(x + width/2,y + height/2, r,0,2*Math.PI);
-}
+//function circle(x, y, r) {
+	//ctx.arc(x + width/2,y + height/2, r,0,2*Math.PI);
+//}
 
 let ct = 0;
 let time = 0;
@@ -278,6 +314,14 @@ function update(t) {
 		//send();
 		ct = 0;
 	}
+
+	for (let a of anims) {
+		a.a -= dt/1000;
+	}
+
+	anims = anims.filter((i)=>{
+		return i.a > 0;
+	});
 	
 //	if (k.wasd & 0x8) {
 //		p.y -= dt * p.s;
@@ -297,8 +341,78 @@ function update(t) {
 //	}
 	//boundsCheck(p);
 	draw();
-	window.requestAnimationFrame(update);
+	//fisheye();
+		window.requestAnimationFrame(update);
+	//setTimeout(function(){
+	//	//log('update' + time)
+	//}, 100);
 	ct += dt;
+}
+
+//let lastImg = ctx.createImageData(width,height);
+function fisheye() {
+	let pxRatio = getPixelRatio();
+
+	//let imageData = ctx.getImageData(0,0,canvas.width*pxRatio,canvas.height*pxRatio);
+	let imageData = ctx.getImageData(0,0,width*pxRatio,height*pxRatio);
+	let data = imageData.data;
+
+	let style = 'invert';
+	switch(style) {
+		case 'invert':
+			for (var i = 0; i < data.length; i += 4) {
+				data[i]     = 255 - data[i];     // red
+				data[i + 1] = 255 - data[i + 1]; // green
+				data[i + 2] = 255 - data[i + 2]; // blue
+			}
+			break;
+		case 'gray':
+			for (var i = 0; i < data.length; i += 4) {
+				var avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+				data[i]     = avg; // red
+				data[i + 1] = avg; // green
+				data[i + 2] = avg; // blue
+			}
+			ctx.putImageData(imageData, 0, 0);
+			break;
+		default:
+			break; //??????????????????
+	}
+	ctx.putImageData(imageData, 0, 0);
+
+	//ctx.clearRect(0,0,width,height);
+	//ctx.putImageData(lastImg, 0, 0);
+	//let fish = ctx.createImageData(width*2,height*2);
+	//for (let x = 0; x < width*2; x++) {
+	//	for (let y = 0; y < height*2; y++) {
+
+	//		let red = y * (width *2* 4) + x * 4;
+	//		//let slope = y/x;
+	//		//let focal = 1;
+	//		//let d = dist({x:x,y:y},{x:0,y:0}) * focal;
+	//		//let a = Math.atan(y/x);
+	////	//i.x = Math.cos(i.path.a) * i.path.r + i.path.ox;
+	//		//let getX = Math.cos(a) * dist;
+	//		//let getY = Math.sin(a) * dist;
+	//		//let rgb = getRGB(imageData, getX, getY);
+	//		//let rgb = getRGB(imageData.data, x, y);
+	//		//fish.data[red++] = rgb.r;
+	//		//fish.data[red++] = rgb.g;
+	//		//fish.data[red++] = rgb.b;
+	//		//fish.data[red++] = rgb.a;
+	//		fish.data[red++]+=50;
+	//		fish.data[red++]+=50;
+	//		fish.data[red++]+=50;
+	//		fish.data[red++]+=50;
+	//	}
+	//}
+	ctx.putImageData(fish, width/2,height/2);
+	//lastImg.data = fish.data;
+}
+
+function getRGB(data, x, y) {
+  var red = y * (width * 4) + x * 4;
+  return {r:data[red], b:data[red + 1], g:data[red + 2], a:data[red + 3]};
 }
 
 function makeDot() {
@@ -381,6 +495,7 @@ function keydown(e) {
 	socket.emit('wasd', k.wasd);
 }
 function mousemove(e) {
+	log(getRGB(ctx.getImageData(0,0,width,height).data, 0,0).b);
 	m.x += e.movementX / getPixelRatio();
 	m.y += e.movementY / getPixelRatio();
 	boundsCheck(m);
@@ -418,21 +533,37 @@ function send() {
 socket.on('update', (p, t)=>{
 	if (tick == -1) {
 		tick = t;
-	} else if (tick+1 != t) {
-		log('MISSED A TICK');
+	} else if (++tick != t) {
+		//log('MISSED A TICK');
 	}
+	if (!players || Object.keys(players).length == 0) {
+		players = p;
+	}
+	m.x -= players[socket.id].x - p[socket.id].x;
+	m.y -= players[socket.id].y - p[socket.id].y;
 	players = p;
 });
-socket.on('die', ()=>{
-	log('you died')
+socket.on('die', (p)=>{
+	//log('you died')
 	//p.x=Math.random()*bounds.w;
 	//p.y=Math.random()*bounds.h;
-	boundsCheck(p);
-	send();
+	//m.x -= players[socket.id].x - p.x;
+	//m.y -= players[socket.id].y - p.y;
+	//players[socket.id] = p;
+	//boundsCheck(p);
+	//draw();
+	//send();
 })
 socket.on('reset', (newD, newIds)=>{
 	ids = Array.from(newIds);
 	d = Array.from(newD);
+});
+socket.on('hit', (id)=>{
+	//log('hit! ' + id);
+	if (typeof AudioContext != 'undefined') {
+		playSound('hs');
+	}
+	anims.push({type:'hitmarker',a:.5,oa:.5})
 });
 
 

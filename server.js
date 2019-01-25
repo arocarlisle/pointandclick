@@ -1,11 +1,17 @@
-let express = require('express')
+let express = require('express');
 let app = express();
 let http = require('http').Server(app);
-let io = require('socket.io')(http);
+let socketio = require('socket.io');
+let io = socketio(http, {
+	pingTimeout: 2000,
+	pingInterval: 4000
+});
 
-const PLAYER_SIZE = 4;
 
-let tickRate = 100;
+const PLAYER_SIZE = 6;
+const PLAYER_SPEED = 10;
+
+let tickRate = 1;
 let tick = 0;
 let ids = [];
 let players = {};
@@ -57,35 +63,64 @@ io.on('connection', function(socket){
 		//p[index].x = x;
 		//p[index].y = y;
 	});
-	socket.on('disconnect', ()=>{
-		console.log('disconnecting', socket.id);
+	socket.on('disconnect', (reason)=>{
+		console.log('disconnecting', socket.id, reason);
 		//socket.broadcast.emit('bye', socket.id);
 		//io.to('main lobby').emit('bye', socket.id);
 		removePlayer(socket.id);
 	});
 	socket.on('click', (x, y)=>{
-		console.log('click', x, y);
+		//console.log('click', x, y);
 		for (let id of Object.keys(players)) {
-			if (dist(players[id],{x:x,y:y}) <= PLAYER_SIZE) {
+			if (dist(players[id],{x:x,y:y}) <= players[id].r) {
+        console.log(id);
 				if (io.of('/').connected[id]) {
-					io.of('/').connected[id].emit('die');
-				} else {
-					console.log(socket.id+' killed a ghost! - '+id);
+				} else if(id.substr(0,3) == 'bot') {
+					//console.log(socket.id+' killed a ghost! - '+id);
+					//delete players[id];
+					//return;
+        } else {
+					// this only should happen if we lose track of a socket/dont get the disconnect event
+          console.log(socket.id+' killed a ghost! - '+id);
 					delete players[id];
+					return;
+        }
+				socket.emit('hit', id);
+				players[id].x += Math.random()*bounds.w;
+				players[id].y += Math.random()*bounds.h;
+				boundsCheck(players[id]);
+				//check if its a bot
+				if (!!io.of('/').connected[id]) {
+					io.of('/').connected[id].emit('die');
 				}
-				players[socket.id].x=Math.random()*bounds.w;
-				players[socket.id].y=Math.random()*bounds.h;
-				boundsCheck(players[socket.id]);
+				boundsCheck(players[id]);
+				players[socket.id].k++;
+				players[socket.id].r = getRadius(players[socket.id].k);
+				players[id].k--;
+				players[id].r = getRadius(players[id].k);
+				//console.log(socket.id, players[socket.id].k, 'killed', id, players[id].k);
+				//players[socket.id].k++;
+				//players[id].k--;
 			}
 		}
 	});
 });
 
+// input range -inf, inf
+// outpt range 4, 8
+function getRadius(x) {
+	x *= .1;
+	if (x <= 0) {
+		return 6;
+	}
+	return 2 * ( x / (x*x*x + x) ) + 4;
+}
+
 function update() {
 	tick++;
 	for (let id of Object.keys(players)) {
-		let wasd = players[id].wasd
-		let speed = 5;
+		let wasd = players[id].wasd;
+		let speed = PLAYER_SPEED * tickRate / 100;
 		if (wasd & 0x8) {
 			players[id].y -= speed;
 		}
@@ -113,12 +148,35 @@ function dist(o1, o2) {
 function newPlayer(id) {
 	players[id] = {
 		x:0,y:0,
-		r:PLAYER_SIZE,
+		k:0,
+		r:PLAYER_SIZE
+		//r:PLAYER_SIZE,
 //		m:{
 //			x: 0,
 //			y: 0
 //		}
 	};
+}
+
+function newBot() {
+	players['bot'+makeId()] = {
+		x:0, y:0,
+		k:0,
+		r:PLAYER_SIZE,
+		a:1,
+		wasd: Math.round(Math.random()*0xf)
+	};
+}
+newBot();
+
+function makeId() {
+  var text = '';
+  var charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+  for (var i = 0; i < 5; i++)
+    text += charset.charAt(Math.floor(Math.random() * charset.length));
+
+  return text;
 }
 
 function removePlayer(id) {
